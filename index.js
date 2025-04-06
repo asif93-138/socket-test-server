@@ -30,9 +30,10 @@ io.on('connection', (socket) => {
     console.log(`User ${socket.id} joined event room ${event_id}`);
   });
 
-  socket.on("switch_room", (dateRoomId) => {
-    socket.join(dateRoomId);
-    console.log(`Socket ${socket.id} switched to room ${dateRoomId}`);
+  socket.on("switch_room", ({from, to}) => {
+    socket.leave(from);
+    socket.join(to);
+    console.log(`Socket ${socket.id} switched from ${from} to room ${to}`);
   });
 
   socket.on('disconnect', () => {
@@ -53,7 +54,7 @@ app.post('/join', async (req, res) => {
   const result = await OpEvent.findOne({ event_id: event_id });
   if (!result) {
     try {
-      const eventTime = "2025-03-24T18:00";
+      const eventTime = "2025-04-06T18:00";
 
       const data = {
         event_id: event_id,
@@ -106,7 +107,7 @@ app.post('/confirmDate', async (req, res) => {
   let arr;
   let updateWithThisIndex = -1;
   if (result.dating_room.length === 0) {
-    arr = {pair, dateRoomId, userData: [userData]};
+    arr = {pair, dateRoomId, userData: [userData], extension: []};
     //update full waiting room value
     const updateResult = await OpEvent.findByIdAndUpdate(result._id, {dating_room: [arr]});
   } else {
@@ -121,7 +122,7 @@ app.post('/confirmDate', async (req, res) => {
 
     if(updateWithThisIndex === -1){
       //push
-      arr = {pair, dateRoomId, userData: [userData]};
+      arr = {pair, dateRoomId, userData: [userData], extension: []};
       const updateResult = await OpEvent.findByIdAndUpdate(result._id, {dating_room: [...result.dating_room, arr]});
     }else{
       //update full waiting room value
@@ -131,11 +132,6 @@ app.post('/confirmDate', async (req, res) => {
     }
   }
  
-
-  // if arr.userdata.length >1 {  THIS IS A FUNC
-  // push to history
-  // remove from waiting room
-  // BROADCAST TO dateRoomId TO START CALL with TIME,}
   if (arr.userData.length > 1) {
     const callHistoryArr = pair.sort();
     let updatedArrM = result.waiting_room.M, updatedArrF = result.waiting_room.F;
@@ -169,31 +165,109 @@ function broadCastStartCall(dateRoomId) {
   io.to(dateRoomId).emit("start_date", {timer: 30});
 }
 
-// async function pairingFunction(user, event_id) {
-//   const user_id = user.user_id;
-//   const result = await OpEvent.findOne({ event_id: event_id });
-//   const interestedIn = user.interested; // complementaryGender(user.gender)
-//   if (result && result.waiting_room.length < 2) return;
-//   const interestedGenderArray = result.waiting_room[interestedIn];
-//   for (let i = 0; i < interestedGenderArray.length; i++) {
-//     const selectedUser = interestedGenderArray[i];
-//     if(selectedUser.user_id === user_id) continue
-//     if(selectedUser.interested === user.gender){
-//       //match
+app.put('/updateDatingRoom', async (req, res) => {
+  console.log('--- testing updateDatingRoom api ---');
+  console.log(req.body);
+  console.log('--- testing updateDatingRoom api ---');
+  // await onLeave(req.body.event_id, req.body.user_id, req.body.isDisconnected, res);
+  await leaveDatingRoom(req.body.event_id, req.body.user_id)
+  res.json({ message: 'leaving dating room..' });
+})
 
-//       // io.to("eventid").payload({pair: [uid1, uid2].sort(), dateRoomId: "sadasdas"})
-//       console.log("match found", user_id, selectedUser.user_id)
-//       return
-//     }
-//   }
-//   return
+async function onLeave(event_id, user_id, isDisconnected, res) {
+  try {
+    const result = await OpEvent.findOne({ event_id: event_id });
 
-// }
+    if (!result) {
+      console.log(`[onLeave] No event found for event_id: ${event_id}`);
+      return res.status(404).json({ message: 'Event not found' });
+    }
+
+    if (isDisconnected) {
+      for (let i = 0; i < result.dating_room.length; i++) {
+        if (result.dating_room[i].pair.includes(user_id)) {
+          console.log(`[DISCONNECTED] User ${user_id} leaving dating_room at index ${i}`);
+          // leaveDating logic here
+
+          break;
+        }
+      }
+
+      for (let i = 0; i < result.waiting_room.M.length; i++) {
+        if (result.waiting_room.M[i].user_id === user_id) {
+          console.log(`[DISCONNECTED] User ${user_id} found in waiting_room.M at index ${i}`);
+          // leaveWaiting logic here
+          break;
+        }
+      }
+
+      for (let i = 0; i < result.waiting_room.F.length; i++) {
+        if (result.waiting_room.F[i].user_id === user_id) {
+          console.log(`[DISCONNECTED] User ${user_id} found in waiting_room.F at index ${i}`);
+          // leaveWaiting logic here
+          break;
+        }
+      }
+    } else {
+      for (let i = 0; i < result.dating_room.length; i++) {
+        if (result.dating_room[i].pair.includes(user_id)) {
+          console.log(`[CONNECTED] User ${user_id} leaving dating_room at index ${i} and will join waiting_room`);
+          // leaveDating and joinWaiting logic here
+          break;
+        }
+      }
+
+      for (let i = 0; i < result.waiting_room.M.length; i++) {
+        if (result.waiting_room.M[i].user_id === user_id) {
+          console.log(`[CONNECTED] User ${user_id} found in waiting_room.M at index ${i}`);
+          // leaveWaiting logic here
+          break;
+        }
+      }
+
+      for (let i = 0; i < result.waiting_room.F.length; i++) {
+        if (result.waiting_room.F[i].user_id === user_id) {
+          console.log(`[CONNECTED] User ${user_id} found in waiting_room.F at index ${i}`);
+          // leaveWaiting logic here
+          break;
+        }
+      }
+    }
+
+    res.json({ message: 'Processed onLeave logic' });
+  } catch (err) {
+    console.error(`[onLeave] Error processing event_id: ${event_id}, user_id: ${user_id}`, err);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+}
+
+async function leaveDatingRoom(event_id, user_id) {
+  console.log('----- leaveDatingRoom function started -----');
+  const result = await OpEvent.findOne({ event_id: event_id });
+  console.log('----- initial dating_room array -----');
+  console.log(result.dating_room);
+
+  //conditional
+  for (let i = 0; i < result.dating_room.length; i++) {
+    if (result.dating_room[i].pair.includes(user_id)) {
+      console.log(`[CONNECTED] User ${user_id} leaving dating_room at index ${i} and will join waiting_room`);
+      // leaveDating and joinWaiting logic here
+      const updatedArr  = result.dating_room.toSpliced(i, 1);
+
+      console.log('----- updated dating_room array -----');
+      console.log(updatedArr);
+      break;
+    }
+  }
+  // call [join - pairing - if pair match
+  // response
+  console.log('----- leaveDatingRoom function ended -----');
+}
 
 async function pairingFunction(user, event_id) {
-  console.log('----- Running pairing function -----');
+  console.log('----- Arguments of pairing function -----');
   console.log(user, event_id);
-  console.log('----- Running pairing function -----');
+  console.log('----- Arguments of pairing function -----');
   const user_id = user.user_id;
   const result = await OpEvent.findOne({ event_id: event_id });
   console.log('----- query result from database -----');
