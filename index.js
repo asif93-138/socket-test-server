@@ -7,12 +7,14 @@ import OpEvent from './opEvents.js';
 
 const app = express();
 app.use(json());
-connectDB();
+await connectDB();
 
 // Allow CORS for your frontend origin.
-app.use(cors({
-  origin: '*',
-}));
+app.use(cors());
+
+// {
+//   origin: '*',
+// }
 
 const server = createServer(app);
 const io = new Server(server, {
@@ -90,14 +92,6 @@ app.post('/join', async (req, res) => {
   });
 });
 
-function complementaryGender(gender) {
-  if (gender === "M") {
-    return "F";
-  } else if (gender === "F") {
-    return "M";
-  }
-}
-
 app.post('/confirmDate', async (req, res) => {
   console.log('----- Request Body (/confirmDate) -----');
   console.log(req.body);
@@ -170,7 +164,7 @@ app.put('/updateDatingRoom', async (req, res) => {
   console.log(req.body);
   console.log('--- testing updateDatingRoom api ---');
   // await onLeave(req.body.event_id, req.body.user_id, req.body.isDisconnected, res);
-  await leaveDatingRoom(req.body.event_id, req.body.user_id)
+  await leaveDatingRoom(req.body.event_id, req.body.user_id);
   res.json({ message: 'leaving dating room..' });
 })
 
@@ -253,12 +247,12 @@ async function leaveDatingRoom(event_id, user_id) {
       console.log(`[CONNECTED] User ${user_id} leaving dating_room at index ${i} and will join waiting_room`);
       // leaveDating and joinWaiting logic here
       const updatedArr  = result.dating_room.toSpliced(i, 1);
+      console.log('----- updated dating_room array -----');
+      console.log(updatedArr);
       const updatedResult = await OpEvent.findOneAndUpdate(
         { event_id: event_id },
         { dating_room: updatedArr }
       );
-      console.log('----- updated dating_room array -----');
-      console.log(updatedArr);
       break;
     }
   }
@@ -285,8 +279,8 @@ async function pairingFunction(user, event_id) {
   console.log('----- interestedGenderArray -----');
 
   if (!result || interestedGenderArray.length === 0) return;
-  for (let i = 0; i <result.call_history.length; i++){
-    if( result.call_history[i].includes(user.user_id)){
+  for (let i = 0; i < result.call_history.length; i++){
+    if(result.call_history[i].includes(user.user_id)){
       return;
     }
   }
