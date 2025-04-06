@@ -253,7 +253,10 @@ async function leaveDatingRoom(event_id, user_id) {
       console.log(`[CONNECTED] User ${user_id} leaving dating_room at index ${i} and will join waiting_room`);
       // leaveDating and joinWaiting logic here
       const updatedArr  = result.dating_room.toSpliced(i, 1);
-
+      const updatedResult = await OpEvent.findOneAndUpdate(
+        { event_id: event_id },
+        { dating_room: updatedArr }
+      );
       console.log('----- updated dating_room array -----');
       console.log(updatedArr);
       break;
