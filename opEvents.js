@@ -13,6 +13,7 @@ const OpEventSchema = new mongoose.Schema(
     waiting_room: { type: Object, default: { M: [], F:[] } },
     dating_room: { type: [Object], default: [] },
     call_history: { type: [[String]], default: [] }, // Array of arrays of strings
+    matched: { type: [[String]], default: [] }, // Array of arrays of strings
   },
   { timestamps: true }
 );
