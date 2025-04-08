@@ -25,23 +25,47 @@ const io = new Server(server, {
 });
 
 io.on('connection', (socket) => {
+  // const event_id = socket.handshake.query.event_id;
+  // const user_id = socket.handshake.query.user_id;
+  // const gender = socket.handshake.query.gender;
+  // const interested = socket.handshake.query.interested;
+  // socket.event_id = event_id; 
+  // socket.user_id = user_id; 
+  // socket.gender = gender; 
+  // socket.interested = interested; 
   console.log('Client connected:', socket.id);
 
   socket.on('join_event', (event_id) => {
     socket.join(event_id);
-    console.log(`User ${socket.id} joined event room ${event_id}`);
+    // console.log(`User ${socket.id} joined event room ${event_id}`);
   });
 
   socket.on("switch_room", ({ from, to }) => {
     socket.leave(from);
     socket.join(to);
-    console.log(`Socket ${socket.id} switched from ${from} to room ${to}`);
+    // console.log(`Socket ${socket.id} switched from ${from} to room ${to}`);
   });
 
   socket.on('disconnect', () => {
+    // const event_id = socket.event_id;
+    // const user_id = socket.user_id;
+    // const gender = socket.gender;
+    // const interested = socket.interested;
+    // disconnectUser(event_id, {user_id, gender, interested})
     console.log('Client disconnected:', socket.id);
   });
 });
+
+async function disconnectUser(event_id, user) {
+  console.log('- disconnectUser Function started -');
+  console.log(event_id);
+  console.log(user);
+  const result = await OpEvent.findOne({ event_id: event_id });
+
+  await leaveDatingRoom(event_id, user.user_id);
+  await eventLeaving({event_id, user});
+  console.log('- disconnectUser Function ended -');
+}
 
 
 app.get('/', (req, res) => {
@@ -85,16 +109,15 @@ function hasTimePassedPlus3Hours(datetimeStr) {
 }
 
 async function eventJoining(req, res) {
-  console.log('----- Request Body (/join) -----');
+  console.log('----- JOIN STARTED -----');
   console.log(req.body);
-  console.log('----- Request Body (/join) -----');
   const { event_id, user } = req.body;
   const result = await OpEvent.findOne({ event_id: event_id });
   if (!result) {
     try {
-      const eventTime = hasTimePassedPlus3Hours("2025-04-07T15:47").adjustedTime;
+      const eventTime = hasTimePassedPlus3Hours("2025-04-08T15:00").adjustedTime;
 
-      if (hasTimePassedPlus3Hours("2025-04-07T15:47").hasPassed) {
+      if (hasTimePassedPlus3Hours("2025-04-08T15:00").hasPassed) {
         res.status(410).json({message: "event ended!"});
         return;
       }
@@ -122,6 +145,9 @@ async function eventJoining(req, res) {
         { $push: { [`waiting_room.${user.gender}`]: user } }, //
         { new: true }
       );
+
+      console.log(`----- updated waiting_room array of ${user.gender} -----`);
+      console.log(updatedResult);
       res.send({ user_id: user.user_id, event_time: result.event_time });
     } catch (error) {
       console.error(error);
@@ -131,21 +157,49 @@ async function eventJoining(req, res) {
   res.on('finish', () => {
     pairingFunction(user, event_id);
   });
+
+  console.log('----- JOIN ENDED -----');
 }
 
 app.post('/confirmDate', async (req, res) => {
-  console.log('----- Request Body (/confirmDate) -----');
+  console.log('----- CONFIRM DATE STARTED -----');
   console.log(req.body);
-  console.log('----- Request Body (/confirmDate) -----');
+
   const { dateRoomId, event_id, userData, pair } = req.body;
+
   const result = await OpEvent.findOne({ event_id: event_id });
+
+  let indexM, indexF;
+
+  if (userData.gender === "M") {
+    result.waiting_room.M.forEach((obj, index) => {
+      if (obj.user_id === userData.user_id) {
+        indexM = index;
+      }
+    })
+    const updatedArrM = result.waiting_room.M.toSpliced(indexM, 1); // Add support for MMFF
+    const updateResult = await OpEvent.findByIdAndUpdate(result._id, { waiting_room: { M: updatedArrM , F: result.waiting_room.F } });
+  } else {
+    result.waiting_room.F.forEach((obj, index) => {
+      if (obj.user_id === userData.user_id) {
+        indexF = index;
+      }
+    })
+    const updatedArrF = result.waiting_room.F.toSpliced(indexF, 1); // Add support for MMFF
+    const updateResult = await OpEvent.findByIdAndUpdate(result._id, { waiting_room: { M: result.waiting_room.M , F: updatedArrF } });
+  }
+
   let arr;
+
+  //add
   let updateWithThisIndex = -1;
   if (result.dating_room.length === 0) {
     arr = { pair, dateRoomId, userData: [userData], extension: [] };
     //update full waiting room value
+    //remove from waiting
     const updateResult = await OpEvent.findByIdAndUpdate(result._id, { dating_room: [arr] });
   } else {
+    //rem
 
     result.dating_room.forEach((obj, index) => { //save index (index init at -1)
       if (obj.pair.join() === pair.join()) {
@@ -167,33 +221,36 @@ app.post('/confirmDate', async (req, res) => {
     }
   }
 
+
+  //remove
   if (arr.userData.length > 1) {
     const callHistoryArr = pair.sort();
-    let updatedArrM = result.waiting_room.M, updatedArrF = result.waiting_room.F;
-    let indexListM = [], indexListF = [];
-    result.waiting_room.M.forEach((obj, index) => {
-      if (obj.user_id === arr.userData[0].user_id || obj.user_id === arr.userData[1].user_id) {
-        indexListM.push(index);
-      }
-    })
-    result.waiting_room.F.forEach((obj, index) => {
-      if (obj.user_id === arr.userData[0].user_id || obj.user_id === arr.userData[1].user_id) {
-        indexListF.push(index);
-      }
-    })
-    if (indexListM.length > 0) {
-      updatedArrM = result.waiting_room.M.toSpliced(indexListM[0], 1); // Add support for MMFF
-    }
-    if (indexListF.length > 0) {
-      updatedArrF = result.waiting_room.F.toSpliced(indexListF[0], 1); // Add support for MMFF
-    }
-    const updateResult = await OpEvent.findByIdAndUpdate(result._id, { waiting_room: { M: updatedArrM, F: updatedArrF }, $push: { call_history: callHistoryArr } });
+    // let updatedArrM = result.waiting_room.M, updatedArrF = result.waiting_room.F;
+    // let indexListM = [], indexListF = [];
+    // result.waiting_room.M.forEach((obj, index) => {
+    //   if (obj.user_id === arr.userData[0].user_id || obj.user_id === arr.userData[1].user_id) {
+    //     indexListM.push(index);
+    //   }
+    // })
+    // result.waiting_room.F.forEach((obj, index) => {
+    //   if (obj.user_id === arr.userData[0].user_id || obj.user_id === arr.userData[1].user_id) {
+    //     indexListF.push(index);
+    //   }
+    // })
+    // if (indexListM.length > 0) {
+    //   updatedArrM = result.waiting_room.M.toSpliced(indexListM[0], 1); // Add support for MMFF
+    // }
+    // if (indexListF.length > 0) {
+    //   updatedArrF = result.waiting_room.F.toSpliced(indexListF[0], 1); // Add support for MMFF
+    // }
+    const updateResult = await OpEvent.findByIdAndUpdate(result._id, { $push: { call_history: callHistoryArr } });
     broadCastStartCall(dateRoomId);
   }
 
-
+  console.log('----- CONFIRM DATE ENDED -----');
   //response back with 10s
   res.status(200).json({ message: 10 });
+
 })
 
 function broadCastStartCall(dateRoomId) {
@@ -201,15 +258,16 @@ function broadCastStartCall(dateRoomId) {
 }
 
 app.put('/leaveDatingRoom', async (req, res) => {
-  console.log('--- testing updateDatingRoom api ---');
+  console.log('--- LEAVE DATING STARTED ---');
   console.log(req.body);
-  console.log('--- testing updateDatingRoom api ---');
+
   // await onLeave(req.body.event_id, req.body.user_id, req.body.isDisconnected, res);
-  leaveDatingRoom(req.body.event_id, req.body.user_id, res);
+  leaveDatingRoom(req.body.event_id, req.body.user_id);
+  console.log('--- LEAVE DATING ENDED ---');
   res.json({ message: 'leaving dating room..' });
 })
 
-async function leaveDatingRoom(event_id, user_id, res) {
+async function leaveDatingRoom(event_id, user_id) {
   console.log('----- leaveDatingRoom function started -----');
   const result = await OpEvent.findOne({ event_id: event_id });
   console.log('----- initial dating_room array -----');
@@ -224,6 +282,7 @@ async function leaveDatingRoom(event_id, user_id, res) {
       const updatedArr = result.dating_room.toSpliced(i, 1);
       console.log('----- updated dating_room array -----');
       console.log(updatedArr);
+
       const updatedResult = await OpEvent.findOneAndUpdate(
         { event_id: event_id },
         { dating_room: updatedArr }
@@ -232,14 +291,6 @@ async function leaveDatingRoom(event_id, user_id, res) {
       // emit
       io.to(data.dateRoomId).emit("has_left", "done!");
 
-      // setTimeout(() => {
-      //   // uporer code eikhane
-      //   const req = {};
-      //   req.body = { event_id, user: data.userData[0] };
-      //   eventJoining(req, res);
-      //   req.body = { event_id, user: data.userData[1] };
-      //   eventJoining(req, res);
-      // }, 1000);
       break;
     }
   }
@@ -270,6 +321,7 @@ async function eventLeaving(params) {
     }
   } else {
     for (let i = 0; i < result.waiting_room.F.length; i ++) {
+      console.log(result.waiting_room.F[i].user_id, params.user.user_id);
       if (result.waiting_room.F[i].user_id === params.user.user_id) {
         const updatedArr = result.waiting_room.F.toSpliced(i, 1);
         const updateResult = await OpEvent.findByIdAndUpdate(result._id, { waiting_room: { M: result.waiting_room.M, F: updatedArr } });
