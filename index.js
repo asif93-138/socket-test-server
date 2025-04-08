@@ -25,33 +25,33 @@ const io = new Server(server, {
 });
 
 io.on('connection', (socket) => {
-  // const event_id = socket.handshake.query.event_id;
-  // const user_id = socket.handshake.query.user_id;
-  // const gender = socket.handshake.query.gender;
-  // const interested = socket.handshake.query.interested;
-  // socket.event_id = event_id; 
-  // socket.user_id = user_id; 
-  // socket.gender = gender; 
-  // socket.interested = interested; 
+  const event_id = socket.handshake.query.event_id;
+  const user_id = socket.handshake.query.user_id;
+  const gender = socket.handshake.query.gender;
+  const interested = socket.handshake.query.interested;
+  socket.event_id = event_id; 
+  socket.user_id = user_id; 
+  socket.gender = gender; 
+  socket.interested = interested; 
   console.log('Client connected:', socket.id);
 
   socket.on('join_event', (event_id) => {
     socket.join(event_id);
-    // console.log(`User ${socket.id} joined event room ${event_id}`);
+    console.log(`User ${socket.id} joined event room ${event_id}`);
   });
 
   socket.on("switch_room", ({ from, to }) => {
     socket.leave(from);
     socket.join(to);
-    // console.log(`Socket ${socket.id} switched from ${from} to room ${to}`);
+    console.log(`Socket ${socket.id} switched from ${from} to room ${to}`);
   });
 
   socket.on('disconnect', () => {
-    // const event_id = socket.event_id;
-    // const user_id = socket.user_id;
-    // const gender = socket.gender;
-    // const interested = socket.interested;
-    // disconnectUser(event_id, {user_id, gender, interested})
+    const event_id = socket.event_id;
+    const user_id = socket.user_id;
+    const gender = socket.gender;
+    const interested = socket.interested;
+    disconnectUser(event_id, {user_id, gender, interested})
     console.log('Client disconnected:', socket.id);
   });
 });
@@ -66,11 +66,6 @@ async function disconnectUser(event_id, user) {
   await eventLeaving({event_id, user});
   console.log('- disconnectUser Function ended -');
 }
-
-
-app.get('/', (req, res) => {
-  res.send('Server is running');
-});
 
 app.post('/join', async (req, res) => {
   eventJoining(req, res);
@@ -225,24 +220,6 @@ app.post('/confirmDate', async (req, res) => {
   //remove
   if (arr.userData.length > 1) {
     const callHistoryArr = pair.sort();
-    // let updatedArrM = result.waiting_room.M, updatedArrF = result.waiting_room.F;
-    // let indexListM = [], indexListF = [];
-    // result.waiting_room.M.forEach((obj, index) => {
-    //   if (obj.user_id === arr.userData[0].user_id || obj.user_id === arr.userData[1].user_id) {
-    //     indexListM.push(index);
-    //   }
-    // })
-    // result.waiting_room.F.forEach((obj, index) => {
-    //   if (obj.user_id === arr.userData[0].user_id || obj.user_id === arr.userData[1].user_id) {
-    //     indexListF.push(index);
-    //   }
-    // })
-    // if (indexListM.length > 0) {
-    //   updatedArrM = result.waiting_room.M.toSpliced(indexListM[0], 1); // Add support for MMFF
-    // }
-    // if (indexListF.length > 0) {
-    //   updatedArrF = result.waiting_room.F.toSpliced(indexListF[0], 1); // Add support for MMFF
-    // }
     const updateResult = await OpEvent.findByIdAndUpdate(result._id, { $push: { call_history: callHistoryArr } });
     broadCastStartCall(dateRoomId);
   }
@@ -414,73 +391,6 @@ async function pairingFunction(user, event_id) {
       });
       return;
     }
-  }
-}
-
-async function onLeave(event_id, user_id, isDisconnected, res) {
-  try {
-    const result = await OpEvent.findOne({ event_id: event_id });
-
-    if (!result) {
-      console.log(`[onLeave] No event found for event_id: ${event_id}`);
-      return res.status(404).json({ message: 'Event not found' });
-    }
-
-    if (isDisconnected) {
-      for (let i = 0; i < result.dating_room.length; i++) {
-        if (result.dating_room[i].pair.includes(user_id)) {
-          console.log(`[DISCONNECTED] User ${user_id} leaving dating_room at index ${i}`);
-          // leaveDating logic here
-
-          break;
-        }
-      }
-
-      for (let i = 0; i < result.waiting_room.M.length; i++) {
-        if (result.waiting_room.M[i].user_id === user_id) {
-          console.log(`[DISCONNECTED] User ${user_id} found in waiting_room.M at index ${i}`);
-          // leaveWaiting logic here
-          break;
-        }
-      }
-
-      for (let i = 0; i < result.waiting_room.F.length; i++) {
-        if (result.waiting_room.F[i].user_id === user_id) {
-          console.log(`[DISCONNECTED] User ${user_id} found in waiting_room.F at index ${i}`);
-          // leaveWaiting logic here
-          break;
-        }
-      }
-    } else {
-      for (let i = 0; i < result.dating_room.length; i++) {
-        if (result.dating_room[i].pair.includes(user_id)) {
-          console.log(`[CONNECTED] User ${user_id} leaving dating_room at index ${i} and will join waiting_room`);
-          // leaveDating and joinWaiting logic here
-          break;
-        }
-      }
-
-      for (let i = 0; i < result.waiting_room.M.length; i++) {
-        if (result.waiting_room.M[i].user_id === user_id) {
-          console.log(`[CONNECTED] User ${user_id} found in waiting_room.M at index ${i}`);
-          // leaveWaiting logic here
-          break;
-        }
-      }
-
-      for (let i = 0; i < result.waiting_room.F.length; i++) {
-        if (result.waiting_room.F[i].user_id === user_id) {
-          console.log(`[CONNECTED] User ${user_id} found in waiting_room.F at index ${i}`);
-          // leaveWaiting logic here
-          break;
-        }
-      }
-    }
-
-    res.json({ message: 'Processed onLeave logic' });
-  } catch (err) {
-    console.error(`[onLeave] Error processing event_id: ${event_id}, user_id: ${user_id}`, err);
-    res.status(500).json({ error: 'Internal server error' });
   }
 }
 
